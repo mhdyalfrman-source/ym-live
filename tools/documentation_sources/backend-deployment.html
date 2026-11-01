@@ -1,0 +1,151 @@
+<section id="deployment-layout"><h2>1. Production layout and prerequisites</h2>
+<p>This example uses an Ubuntu/Debian-style VPS, Nginx, PHP-FPM, MySQL, Redis and PM2. Adapt service names, installed versions, certificate paths and users to your server. Commands run on the Linux server, not in the Flutter project on Windows. Use a maintained PHP release compatible with composer.lock and a maintained Node LTS release supporting <code>--env-file</code> (this guide requires Node 22+). Validate the supplied dependency locks on staging before production.</p>
+<pre><code>/var/www/appchat/backend/php_api/       # PHP source and private .env
+/var/www/appchat/backend/php_api/public/ # ONLY this directory is the web root
+/var/www/appchat/backend/node_server/    # s1.js, dependencies, private .env
+api.example.com                         # HTTPS PHP API and /admin/
+socket.example.com                      # HTTPS/WSS proxy to Node port 65535</code></pre>
+<ol><li>Create DNS A records (and AAAA only if IPv6 is configured) pointing both hostnames at your server. Obtain valid TLS certificates for both names using your host or ACME client and enable automatic renewal. The Nginx configuration below assumes the certificate files already exist.</li>
+<li>Create a non-root deployment user, for example <code>appchat</code>. Install Nginx, PHP-FPM, the PHP extensions listed in <a href="index.html">installation requirements</a>, Composer, MySQL, Redis, Node and npm. Install PM2 and confirm it is available to the deployment user.</li>
+<li>Copy Main_File/backend to the layout above, owned by the deployment user. Do not put the whole buyer package, database dumps, .env files or service-account keys in the public web root.</li>
+<li>Create the MySQL database and a database-specific user, then import <code>Main_File/database/appchat_clean_install.sql</code> once into the empty database. Back up an existing installation before updates; never import the clean installer over live data.</li>
+<li>Bind database and Redis services to loopback/private interfaces, enable Redis authentication, and allow only required private clients. Permit public HTTPS/HTTP and restricted administration access in the host/cloud firewall. Block public TCP 3306, 6379 and 65535 on both IPv4 and IPv6.</li></ol>
+<p><strong>Binding detail:</strong> the delivered s1.js calls <code>server.listen(PORT)</code> without a host argument. <code>SOCKET_BIND_IP</code> is used in the log/configuration but does not restrict the listening interface. The firewall is therefore required even when SOCKET_BIND_IP is 127.0.0.1. Check the actual listening sockets with <code>ss -lntp</code>.</p></section>
+<section id="php-environment"><h2>2. Configure PHP and writable directories</h2>
+<pre><code>cd /var/www/appchat/backend/php_api
+cp .env.example .env
+composer install --no-dev --optimize-autoloader
+composer check-platform-reqs --no-dev</code></pre>
+<p>Edit .env privately; set <code>APP_URL=https://api.example.com</code>, an empty <code>APP_BASE_PATH</code> for this dedicated-domain layout, <code>APP_DEBUG=false</code>, DB_HOST/DB_PORT/DB_DATABASE/DB_USERNAME/DB_PASSWORD and API_KEY. Set REDIS_HOST/REDIS_PORT/REDIS_PASSWORD to the same Redis instance used by Node. Set <code>SOCKET_PUBLIC_HOST=socket.example.com</code> and <code>SOCKET_PUBLIC_PORT=443</code>. Fill the buyer's Agora, Firebase and purchase-verification configuration from the installation guide. The public socket port is 443; the private Node port is 65535.</p>
+<p>PHP loads its .env through core/Config.php. Keep service-account JSON files in <code>secure/</code> or another private directory and set their absolute paths. The web root must remain public/. Example permissions below assume the deployment user is appchat and the PHP-FPM group is www-data; substitute your actual pool user/group.</p>
+<pre><code>sudo chown appchat:www-data /var/www/appchat/backend/php_api/.env
+sudo chmod 640 /var/www/appchat/backend/php_api/.env
+sudo chown -R appchat:www-data /var/www/appchat/backend/php_api/secure
+sudo chmod 750 /var/www/appchat/backend/php_api/secure
+# Apply 640 to each private JSON credential file after adding it.
+sudo install -d -o appchat -g www-data -m 2775 /var/www/appchat/backend/php_api/public/uploads
+sudo chgrp -R www-data /var/www/appchat/backend/php_api/public/uploads
+sudo chmod -R g+rwX /var/www/appchat/backend/php_api/public/uploads</code></pre>
+<p>Give PHP write access only to intended media/runtime directories and its configured session directory; do not chmod the entire source tree to 777. Choose the server storage driver in application settings for local uploads, or configure Bunny storage before testing uploads. Set PHP <code>display_errors=Off</code>, <code>log_errors=On</code>, and suitable upload/post limits (for example 32M) in the FPM configuration. The application's own upload limit is 25 MiB.</p></section>
+<section id="nginx"><h2>3. Configure Nginx, PHP-FPM and HTTPS/WSS</h2>
+<p>Save this example as <code>/etc/nginx/sites-available/appchat</code>. Replace both domain names, certificate files and <code>/run/php/php8.3-fpm.sock</code> with the actual FPM socket shown by your pool configuration. The map directive belongs in Nginx's http context, as sites-enabled normally does on Debian/Ubuntu.</p>
+<pre><code>map $http_upgrade $appchat_connection_upgrade {
+    default upgrade;
+    '' close;
+}
+
+server {
+    listen 80;
+    server_name api.example.com socket.example.com;
+    return 301 https://$host$request_uri;
+}
+
+server {
+    listen 443 ssl;
+    server_name api.example.com;
+    ssl_certificate /etc/letsencrypt/live/api.example.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/api.example.com/privkey.pem;
+    root /var/www/appchat/backend/php_api/public;
+    index index.php index.html;
+    client_max_body_size 32m;
+    autoindex off;
+    access_log /var/log/nginx/appchat-api-access.log;
+    error_log /var/log/nginx/appchat-api-error.log;
+
+    # Deny hidden files and script execution in writable media paths.
+    location ~ /\. { deny all; }
+    location ~* ^/uploads/.*\.(php[0-9]*|phtml|phar)(/|$) { deny all; }
+    location / {
+        try_files $uri $uri/ /index.php?$query_string;
+    }
+
+    # Signed media PUT/GET URLs contain /server_upload.php/uploads/...
+    # Preserve PATH_INFO and the query string; do not route them to index.php.
+    location ~ ^/server_upload\.php(?:/|$) {
+        fastcgi_split_path_info ^(.+?\.php)(/.*)$;
+        include fastcgi_params;
+        fastcgi_param SCRIPT_FILENAME $document_root/server_upload.php;
+        fastcgi_param SCRIPT_NAME /server_upload.php;
+        fastcgi_param PATH_INFO $fastcgi_path_info;
+        fastcgi_param HTTPS on;
+        fastcgi_pass unix:/run/php/php8.3-fpm.sock;
+    }
+    location ~ \.php$ {
+        try_files $uri =404;
+        include fastcgi_params;
+        fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
+        fastcgi_param HTTPS on;
+        fastcgi_pass unix:/run/php/php8.3-fpm.sock;
+    }
+}
+
+server {
+    listen 443 ssl;
+    server_name socket.example.com;
+    ssl_certificate /etc/letsencrypt/live/socket.example.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/socket.example.com/privkey.pem;
+    access_log /var/log/nginx/appchat-socket-access.log;
+    error_log /var/log/nginx/appchat-socket-error.log;
+
+    location /socket.io/ {
+        proxy_pass http://127.0.0.1:65535;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection $appchat_connection_upgrade;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_read_timeout 75s;
+        proxy_send_timeout 75s;
+        proxy_buffering off;
+    }
+    location / { return 404; }
+}</code></pre>
+<pre><code>sudo ln -s /etc/nginx/sites-available/appchat /etc/nginx/sites-enabled/appchat
+sudo nginx -t
+sudo systemctl reload nginx</code></pre>
+<p>Create the symlink only once. Resolve configuration errors before reloading. Enable/start your installed services, for example <code>sudo systemctl enable --now nginx php8.3-fpm mysql redis-server</code>, substituting actual unit names. If using IPv6, add matching listen directives and firewall rules. Keep certificate renewal enabled and test it using your certificate client's renewal check. Official reference: <a href="https://nginx.org/en/docs/http/websocket.html">Nginx WebSocket proxying</a>.</p>
+<p><strong>Apache alternative:</strong> Apache must serve the same public/ root with PHP-FPM, DirectoryIndex index.php, rewrite support for the supplied public/.htaccess, TLS and a Socket.IO WebSocket/polling reverse proxy. Do not paste Nginx directives into Apache. Use your host's equivalent configuration and run the same validation below. The Nginx example is the complete deployment path provided here.</p></section>
+<section id="process-management"><h2>4. Run Node continuously with PM2</h2>
+<p>The supplied Node code reads <code>process.env</code> and does not load .env automatically. Copying .env alone is insufficient. The following PM2 command explicitly uses Node's <code>--env-file</code> option. Use Node 22+ for this guide and verify with <code>node --version</code>. See the <a href="https://nodejs.org/api/cli.html#--env-filefile">Node CLI documentation</a>.</p>
+<pre><code>cd /var/www/appchat/backend/node_server
+cp .env.example .env
+chmod 600 .env
+npm ci --omit=dev</code></pre>
+<p>Edit this separate Node .env before starting:</p><pre><code>PORT=65535
+SOCKET_PORT=65535
+SOCKET_BIND_IP=127.0.0.1
+SOCKET_ALLOWED_ORIGINS=https://api.example.com
+PHP_API_URL=https://api.example.com
+API_KEY=YOUR_MATCHING_PHP_API_KEY
+SOCKET_SHARED_TOKEN=YOUR_SOCKET_SHARED_TOKEN
+REDIS_HOST=127.0.0.1
+REDIS_PORT=6379
+REDIS_PASSWORD=YOUR_MATCHING_REDIS_PASSWORD</code></pre>
+<p>Use your actual browser origins if applicable, comma-separated; CORS is not a substitute for API authentication or a firewall. Keep API_KEY and Redis connection values aligned with PHP. Set a strong socket shared token instead of the placeholder. Do not publish these values.</p>
+<pre><code># Run as the appchat deployment user, not root.
+pm2 start s1.js --name appchat-socket --cwd /var/www/appchat/backend/node_server --node-args="--env-file=/var/www/appchat/backend/node_server/.env" --time
+pm2 save
+pm2 startup
+# Run the exact privileged startup command printed by PM2 once.
+pm2 status
+pm2 logs appchat-socket --lines 100 --nostream</code></pre>
+<p>Use one relay instance for this supplied deployment; do not enable PM2 cluster mode without designing and testing shared Socket.IO state. PM2 restarts a failed process and its generated startup service restores the saved process list after reboot. Nginx, PHP-FPM, MySQL and Redis are managed separately by systemd. No PHP queue worker or cron scheduler is shipped; see <a href="operations.html#background">the background-task inventory</a>.</p>
+<p>After a Node .env change, run <code>pm2 restart appchat-socket --update-env</code> and <code>pm2 save</code>; the stored node arguments reload the file. Previously exported process/PM2 environment values take precedence over Node's env file, so remove conflicting values from the service environment. An older PM2 entry without --env-file must be recreated using the full command above during a maintenance window. After changing the Node executable/version, regenerate the PM2 startup service as described in <a href="https://pm2.keymetrics.io/docs/usage/startup/">PM2 startup instructions</a>.</p></section>
+<section id="deployment-verification"><h2>5. Verify before sending users to production</h2>
+<p class="notice"><strong>Required Flutter transport adjustment:</strong> the delivered <code>flutter_app/lib/controllers/socket_manager.dart</code> currently constructs <code>io.io('http://$ip:$port', {</code>. For the TLS-only deployment above, change that URL to <code>io.io('https://$ip:$port', {</code> and rebuild the app, retaining the existing options. Keep the host as a hostname without a scheme and set the public port to 443. Changing the port alone does not enable WSS. See <a href="socket-events.html">the Socket.IO guide</a>; do not disable TLS verification or relax iOS transport security to work around an HTTP URL.</p><ol>
+<li>Check service status and logs. Confirm PHP connects to the intended database, Node logs a successful Redis connection and PM2 shows appchat-socket online.</li>
+<li>POST to helper/config and inspect the JSON application code and data, not just HTTP status:</li></ol>
+<pre><code>curl -X POST https://api.example.com/api/helper/config \
+  -H 'API-KEY: YOUR_API_KEY' -H 'Content-Type: application/json' -d '{}'
+curl 'https://socket.example.com/socket.io/?EIO=4&amp;transport=polling'</code></pre>
+<p>The first response should contain code 200 with your configuration. The second should begin with an Engine.IO open packet (0 and JSON including sid); this checks proxy reachability, not app authentication. Do not use a fake HTTP health route: none is provided here.</p>
+<ol start="3"><li>Open <code>https://api.example.com/admin/</code>, sign in and change the supplied demo password. Confirm requests for /.env, /secure/ credentials and source directories cannot retrieve private files.</li>
+<li>Build Flutter with <code>TOMCHAT_API_BASE_URL=https://api.example.com/</code> (no /api suffix), the matching API key and public socket host/443. Test sign-in and two devices in one room: voice, room messages, seats and reconnect.</li>
+<li>Obtain an authenticated upload plan, PUT a small supported file to its exact signed upload_url, then GET its returned display URL. This checks writable storage and the Nginx PATH_INFO handling.</li>
+<li>Test push and sandbox purchases. Open GamePix from a room and follow its <a href="gamepix.html#gamepix-test">device checklist</a>.</li>
+<li>Perform a planned reboot before launch. Confirm systemd services and PM2 restart automatically, and repeat authenticated login and two-device messaging. Check public access to Node/MySQL/Redis ports is blocked from another machine.</li></ol></section>
+<section id="maintenance"><h2>6. Logs, updates, backups and recovery</h2>
+<p>Inspect Nginx logs above, the configured PHP-FPM error log, <code>journalctl -u php8.3-fpm</code> and <code>pm2 logs appchat-socket</code>. Configure retention/rotation for system and PM2 logs; PM2 logs are normally under the deployment user's .pm2/logs. Monitor disk space, certificate expiry, process restarts and provider usage. Keep credentials and user data out of support screenshots.</p>
+<p>Back up MySQL, public/uploads, private service configuration and signing materials securely, and test restoring to a separate environment. Before an update, record the previous source and dependency locks, take a database/media backup, test the new release on staging, install locked dependencies, and restart the affected services. Node restarts interrupt sockets; reconnect and refetch room state. For rollback, restore compatible code/configuration and restore database data only under a deliberate recovery plan. Never re-run purchases or gifts to repair an uncertain result.</p>
+<p>These are deployment instructions, not a claim that a production server was provisioned or reboot-tested with this documentation update. Provider accounts and operating costs remain the <a href="third-party-services.html">buyer's responsibility</a>.</p></section>

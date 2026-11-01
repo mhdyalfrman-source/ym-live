@@ -1,0 +1,64 @@
+<section id="gamepix-overview"><h2>GamePix games in voice rooms</h2>
+<p>AppChat includes an online GamePix HTML5 game catalogue, opened from the floating games button inside a voice room. The user chooses a category, browses game cards, and opens a selected game in an embedded WebView. The catalogue requests up to 24 entries per page, ordered by provider quality, with pagination, refresh and retry controls. Available titles and their metadata come from GamePix and can change; a fixed game count is not included or guaranteed.</p>
+<p>The purchase includes AppChat's integration source. GamePix hosts the games; their game source files are not bundled and AppChat does not transfer ownership of third-party game artwork or code. Internet access is required. GamePix is separate from AppChat's gifts, coins, diamonds and purchases: this integration has no app-wallet debit, cash-out, wagering, score-to-coin reward or JavaScript wallet bridge. It does not synchronize multiplayer matches or scores between room users.</p></section>
+<section id="gamepix-setup"><h2>1. Configure your publisher account and SID</h2><ol>
+<li>Open <a href="https://partners.gamepix.com/publishers">GamePix for Publishers</a>, follow the registration link to the GamePix Dashboard, and create your publisher account. Complete the requested account details, then obtain your publisher SID from GamePix for use in your app. Contact GamePix support if you need help finding it or confirming mobile app use.</li>
+<li>In <code>Main_File/flutter_app/lib/features/rooms/game_pix/controllers/game_pix_controller.dart</code>, replace the <code>GamePixController.sid</code> constant (currently <code>UOU4Y</code>) with your publisher SID:</li></ol>
+<pre><code>static const String sid = 'YOUR_GAMEPIX_SID';</code></pre>
+<ol start="3"><li>The feed URL is built as <code>https://feeds.gamepix.com/v2/json</code> with sid, category, pagination=24, page and order=quality. The SID is a client-side publisher identifier, not a private API secret. No GAMEPIX_SID environment variable or admin SID field is wired in this package; changing the constant requires rebuilding Flutter.</li>
+<li>Launch URLs come from the feed. The app preserves provider URL parameters and adds the selected app language using <code>lang</code>. Do not replace returned game URLs with unrelated hosts or inject app authentication tokens into them.</li>
+<li>Ensure the mobile device can reach the PHP API, feeds.gamepix.com, GamePix game hosts and required provider resources over HTTPS. App configuration is fetched from your authenticated PHP API before the catalogue is loaded directly from GamePix.</li></ol>
+<p>Any applicable third-party fees and the buyer's account obligations are covered in <a href="third-party-services.html">third-party services and costs</a>. Provider advertising, revenue share, title availability and language support follow the provider's arrangement; the AppChat purchase does not promise ad-free play or revenue.</p></section>
+<section id="gamepix-config"><h2>2. Configure categories and blocked games</h2>
+<p>Edit <code>Main_File/backend/php_api/app/Controllers/GameAppController.php</code>, method <code>gamePixConfig</code>. Its <code>$gamePixConfig</code> array defines category keys and display labels; <code>$blocked_game_ids</code> defines GamePix feed IDs hidden by the mobile catalogue. These settings are currently source configuration, not a dedicated admin dashboard editor or app_settings database record.</p>
+<pre><code>// Example replacement inside gamePixConfig; retain the existing return statement.
+$gamePixConfig = [
+    ['key' =&gt; '', 'label' =&gt; 'All'],
+    ['key' =&gt; 'arcade', 'label' =&gt; 'Arcade'],
+    ['key' =&gt; 'puzzle', 'label' =&gt; 'Puzzle'],
+];
+$blocked_game_ids = ['REPLACE_WITH_EXACT_FEED_ITEM_ID'];</code></pre>
+<p>Leave the blocked list empty if no exclusions are required. Use each provider record's exact <code>id</code>, not its title, namespace or a numeric ID from AppChat's games table. Category keys must be supported by the feed; labels are display text you may edit. The supplied categories are All, Hidden Object, Match 3, 2048, Battle, Simulation, Memory, Arcade, Kids, Drawing, Ball, Stickman, Sports, Fighting, Adventure, Puzzle, Shooter and Educational.</p>
+<p>Deploy the PHP edit and close/reopen the game catalogue to reload configuration. Pull-to-refresh reloads the selected feed, not the PHP configuration. Existing opened games are not remotely revoked by adding an ID to the list. The blocked list is client-side filtering, not a provider access restriction. Category choices organize browsing; keeping All still exposes the provider's general catalogue. A category label such as Kids does not certify the suitability of its games or advertising.</p>
+<h3>Configuration API</h3><pre><code>POST https://api.example.com/api/game/gamePixConfig
+Content-Type: application/json
+API-KEY: YOUR_API_KEY
+Auth-Token: A_VALID_APP_USER_TOKEN
+
+{}</code></pre>
+<p>The response has the standard API envelope. This abbreviated example shows two categories, not the complete default list:</p>
+<pre><code>{
+  "code": 200,
+  "data": {
+    "gamePixConfig": [
+      {"key": "", "label": "All"},
+      {"key": "arcade", "label": "Arcade"}
+    ],
+    "blocked_game_ids": []
+  }
+}</code></pre>
+<p>An invalid API key or session produces the API authentication error envelope. If configuration is missing/malformed or the request fails, the app shows a retry state rather than assuming no blocked games. This GamePix endpoint is documented separately from the <a href="api-reference.html">110 non-game API entries</a>. The legacy <code>game/list</code> database catalogue is not the GamePix feed and is not used to populate the current room games button.</p></section>
+<section id="gamepix-behavior"><h2>3. Game screen behavior and limits</h2><ul>
+<li>Initial and subsequent top-level navigation accepts HTTPS GamePix hosts without embedded credentials or nonstandard ports. Foreign and custom-scheme navigation is blocked. Games may load provider-controlled subresources; this check is not an audit of every third-party script or advertisement.</li>
+<li>The game page shows loading and a retry action for detected main-page failures or a 30-second load timeout. A provider's own loader may fail even after the outer page loads successfully.</li>
+<li>Back first traverses available WebView history, then closes the game; the close control exits directly. Repeated opens are guarded. Leaving or changing the room closes the owned game/catalogue overlays.</li>
+<li>Supported portrait/landscape metadata controls game orientation and the app restores its orientation policy on close. Verify device behavior on supported Android/iOS versions.</li>
+<li>The room stays mounted and this integration does not call Agora mute/join/leave. Game audio, native audio focus and voice mixing depend on the device/game and require testing. The page does not grant WebView microphone/camera access through a custom permission handler.</li>
+<li>App-owned controls follow app localization and RTL layout. Supplied category labels are English; game titles and translations are provider metadata. Passing lang does not guarantee every title supports that language. See <a href="https://gpxprj.blob.core.windows.net/api/index.html">GamePix's language-query documentation</a>.</li>
+<li>No AppChat cloud game-save, cross-device progress, match restoration or guaranteed offline play is implemented. Provider persistence varies by game.</li></ul></section>
+<section id="gamepix-test"><h2>4. Test GamePix before distribution</h2><ol>
+<li>Install the buyer build with your Firebase/backend configuration and publisher SID. Sign in, join a room, open the game button and confirm categories, cards and images load.</li>
+<li>Switch categories, refresh and load later pages. Test an empty/fully filtered page. Temporarily block a real feed ID on staging, reopen the catalogue and verify that title is absent.</li>
+<li>Play representative portrait and landscape games on Android and iOS. Check Arabic/English selection, small screens, game controls, ad behavior and loading/retry after network interruption.</li>
+<li>Test toolbar/hardware back, close/reopen, repeated taps, foreground/background, room departure and room switching. Verify no orphan game overlay remains.</li>
+<li>Use two devices to check room voice while a game is open and after it closes. Confirm no app coins/diamonds change as a consequence of GamePix play.</li>
+<li>Review provider content/ads and your app's privacy disclosures and store submission information for your actual enabled games. Capture actual game catalogue/game screens from your release candidate for reviewer evidence.</li></ol>
+<p>These are required buyer release checks, not a claim that every provider game or physical device has been verified. The integration's source tests do not prove gameplay or advertisement behavior on real devices.</p></section>
+<section id="gamepix-troubleshooting"><h2>5. Troubleshooting and source map</h2><div class="table-scroll"><table><thead><tr><th>Symptom</th><th>Check</th></tr></thead><tbody>
+<tr><td>Catalogue cannot load configuration</td><td>Inspect game/gamePixConfig with a valid API key/session. Both data.gamePixConfig and data.blocked_game_ids must be arrays. Renew login if the token expired.</td></tr>
+<tr><td>Feed empty or unavailable</td><td>Check device connectivity, publisher SID, provider availability and category key. Inspect exact blocked IDs and pagination. An API success does not prove device access to the provider.</td></tr>
+<tr><td>Card works but game fails</td><td>Check the returned HTTPS game URL, host and network. Retry after reconnecting. Report a provider loader/ad failure with the game ID and platform; avoid bypassing URL checks indiscriminately.</td></tr>
+<tr><td>PHP edits are not visible</td><td>Close/reopen the catalogue; ensure you edited the deployed API used by this build. Reload PHP-FPM if the host's OPcache deployment policy requires it.</td></tr>
+<tr><td>SID change is not visible</td><td>Rebuild/reinstall flutter_app. It is a compiled Dart constant, not a live backend value.</td></tr>
+</tbody></table></div>
+<p>Flutter source directory: <code>flutter_app/lib/features/rooms/game_pix/</code>. Controller: <code>controllers/game_pix_controller.dart</code>; feed/URL models: <code>models/game_pix_models.dart</code>; room catalogue: <code>pages/game_bottom_sheet2.dart</code>; embedded player: <code>pages/game_pix_game_page.dart</code>. Backend configuration: <code>backend/php_api/app/Controllers/GameAppController.php</code>. The buyer package uses the hosted WebView dependency described in <a href="webview-maintenance.html">WebView maintenance</a>; the historical custom wallet bridge is not required for GamePix.</p></section>

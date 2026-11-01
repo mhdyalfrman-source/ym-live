@@ -1,0 +1,63 @@
+{
+  "project_info": {
+    "project_number": "310234338475",
+    "project_id": "yaumi-1",
+    "storage_bucket": "yaumi-1.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:310234338475:android:02ae4ceb67a26b5c53d3ee",
+        "android_client_info": {
+          "package_name": "com.yoursoft.yaumi"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "310234338475-95jh568epn5q6i3g9bofcdi5toovniav.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.yoursoft.yaumi",
+            "certificate_hash": "36958e57c4dcbcc8bc8628e73ad12f9ad240abce"
+          }
+        },
+        {
+          "client_id": "310234338475-mi9lo0nvfotcj6o81koupuu222vb4bqp.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.yoursoft.yaumi",
+            "certificate_hash": "3af0fe9995dddc2fc14a839a40fc70b4eb4f2edb"
+          }
+        },
+        {
+          "client_id": "310234338475-s2eqbmdlm79tava56uol93jr0vdtcn18.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.yoursoft.yaumi",
+            "certificate_hash": "7583f4184617689b173aedff89a7bf9bd4b0da75"
+          }
+        },
+        {
+          "client_id": "310234338475-ea5dbbfto6qsid3c340mnjh7ac6ogu8f.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBV2F0dYyKpQ2uuJLY06qvNezqFUGnYSy8"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "310234338475-ea5dbbfto6qsid3c340mnjh7ac6ogu8f.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

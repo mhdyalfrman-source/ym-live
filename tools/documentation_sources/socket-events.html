@@ -1,0 +1,260 @@
+<section id="transport">
+  <h2>Connection and delivery model</h2>
+  <p>Connect with a Socket.IO client compatible with the Node server, using the normal <code>/socket.io/</code> path.
+    The shipped server listens over HTTP behind your reverse proxy. PHP publishes envelopes to Redis channel
+    <code>update</code>; Node dispatches their <code>msg</code> as a Socket.IO payload. Clients do not receive the Redis
+    envelope.</p>
+  <pre><code>{"channel":"room","event":"roomMessage","id":7,"rid":null,
+ "msg":{"type":"normal","text":"Hello","msg":"","person":{"uid":42}}}</code></pre>
+  <p>Routing: user + id goes to <code>user:{id}</code>; room + positive id goes to <code>room:{id}</code>; room + id=0
+    goes to the shared <code>room</code> channel; app goes to <code>app</code>. The user's PHP enterRoom event is
+    intercepted by Node to join the socket and broadcast the arriving user to room listeners.</p>
+  <p><strong>Transport caveat in the supplied Flutter source:</strong> controllers/socket_manager.dart constructs
+    <code>http://$ip:$port</code>. Setting port 443 does not turn that string into HTTPS/WSS. A TLS-only deployment must
+    update that client URL construction to use HTTPS, then test the release build. Do not weaken iOS transport security
+    to work around it. The example below explicitly uses HTTPS.</p>
+  <p>No custom event uses an acknowledgement callback. Confirm a mutation using its PHP response; events can be missed
+    while disconnected. Do not assume replay, ordering across PHP requests, or a durable queue. GamePix uses HTTP
+    catalogue/configuration requests and an embedded WebView, with no dedicated game socket events; see <a
+      href="gamepix.html">GamePix setup</a>.</p>
+</section>
+<section id="client">
+  <h2>Client → server events</h2>
+  <div class="table-scroll">
+    <table>
+      <thead>
+        <tr>
+          <th>Event</th>
+          <th>Payload and example</th>
+          <th>When / result</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>conn</td>
+          <td>token:string required; apiKey:string required; prefix:string optional (compatibility, unused by server);
+            user:object optional (alias fullUser); rid optional but avoid it in this version.
+            <pre><code>{"token":"SESSION_TOKEN","apiKey":"YOUR_API_KEY","prefix":"tomchat"}</code></pre>
+          </td>
+          <td>Emit after each transport connection. Looks up the PHP token in Redis; joins user:{uid} and app. Replies
+            appCon=1 or loginFailed. The optional rid branch currently calls joinRoom without user and can throw; enter
+            via PHP after authentication.</td>
+        </tr>
+        <tr>
+          <td>joinRoom</td>
+          <td>rid:int/string required (alias room); user:object required by the implementation.
+            <pre><code>{"rid":7,"user":{"uid":42,"name":"Demo"}}</code></pre>
+          </td>
+          <td>After conn. Joins room:{rid} and room, updates Redis presence, broadcasts enterRoom. This is socket
+            membership, not room-password/ban authorization. Prefer PHP live/enterRoom, which supplies the validated
+            entry payload. Do not call both and count duplicate arrival events.</td>
+        </tr>
+        <tr>
+          <td>leaveRoom</td>
+          <td>rid:int/string optional, defaults to last joined room.
+            <pre><code>{"rid":7}</code></pre>
+          </td>
+          <td>Removes socket channel membership/presence. No explicit response event. Also POST live/leaveRoom to update
+            database membership/seats. A PHP leave alone does not call Node's leaveRoom handler.</td>
+        </tr>
+        <tr>
+          <td>disconnect (transport lifecycle)</td>
+          <td>No application payload to send.</td>
+          <td>Close/disconnect the Socket.IO client; Node removes its tracked presence. An abrupt process failure is not
+            guaranteed to execute cleanup. This is not a custom business event.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+  <p><code>loginSuccess</code> is an internal Node EventEmitter event, not a wire event. Do not wait for it on the
+    client. There are no server socket.on handlers named sendGift, seatTake, seatMic or sendMessage.</p>
+</section>
+<section id="server">
+  <h2>Server → client event catalogue</h2>
+  <p>Object shapes below list fields and types. User, Room, Seat, VIP and Box use the <a
+      href="api-reference.html#resources">PHP resource dictionary</a>. Numeric examples and shortened nested resources
+    are illustrative. Arrays are sent directly where indicated.</p>
+  <div class="table-scroll">
+    <table>
+      <thead>
+        <tr>
+          <th>Event</th>
+          <th>Destination / trigger</th>
+          <th>Payload</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>appCon</td>
+          <td>Connecting socket, accepted conn</td>
+          <td>Integer <code>1</code>, not {status:1}.</td>
+        </tr>
+        <tr>
+          <td>loginFailed</td>
+          <td>Connecting socket</td>
+          <td>{message:string}; exact messages: Invalid API key, Token is required, Invalid token, Internal server
+            error.</td>
+        </tr>
+        <tr>
+          <td>userData</td>
+          <td>Connecting socket, only when conn.user/fullUser supplied</td>
+          <td>The supplied user object, echoed. It is not a new authoritative profile fetch.</td>
+        </tr>
+        <tr>
+          <td>forceLogout</td>
+          <td>Previous user's active socket after new login</td>
+          <td>{reason:"new_device_login"}; followed by socket disconnect. Clear the old session; do not reconnect using
+            its revoked token.</td>
+        </tr>
+        <tr>
+          <td>enterRoom</td>
+          <td>Room listeners, PHP startLive/enterRoom or direct joinRoom</td>
+          <td>User object with users_count:int added, e.g. {uid:42,name:"Demo",users_count:2}.</td>
+        </tr>
+        <tr>
+          <td>leaveRoom</td>
+          <td>Room listeners, PHP live/leaveRoom</td>
+          <td>{uid:int,users_count:int,oldSeat:-1}. Direction differs from the identically named client leaveRoom
+            request.</td>
+        </tr>
+        <tr>
+          <td>roomData</td>
+          <td>Room, room/updateRoom</td>
+          <td>Room object directly, not {room:Room}.</td>
+        </tr>
+        <tr>
+          <td>roomSeats</td>
+          <td>Room, seat actions, seat count changes, departure or gift score changes</td>
+          <td>Seat[] directly. Each seat:
+            {pos:int,score:int,isHost:bool,percentageSize:1,user:User|null,mute:int,cam_state:int,state:int}.</td>
+        </tr>
+        <tr>
+          <td>seatRequest</td>
+          <td>Room, restricted seat requested</td>
+          <td>{type:"request",seat:int,user:User}. Manager accepts/rejects through live/seatRequestAccept.</td>
+        </tr>
+        <tr>
+          <td>seatEmoji</td>
+          <td>Room, live/sendEmoji</td>
+          <td>{seat:int,name:string}.</td>
+        </tr>
+        <tr>
+          <td>roomMessage</td>
+          <td>Room, live/sendMessage</td>
+          <td>{type:"normal",text:string,msg:string,person:User}. text uses request msg; legacy output msg uses request
+            message/content.</td>
+        </tr>
+        <tr>
+          <td>roomGift</td>
+          <td>Room or all joined room sockets when gift.is_all_notify=1</td>
+          <td>GiftEvent[]; one entry per recipient. Fields:
+            uid,uPos,uRule,touid,toPos,toRule,gid,count,rid,liveuid,is_all_notify,coin_number:int;
+            uName,toName,name:string; uAvatar,toAvatar,img,anim:image|null; sender,to:User. liveuid is the room owner
+            UID here, while rid is the room ID.</td>
+        </tr>
+        <tr>
+          <td>clearChat</td>
+          <td>Room, live/clearChat</td>
+          <td>{rid:int}; clear local displayed chat.</td>
+        </tr>
+        <tr>
+          <td>clearRoomGifts</td>
+          <td>Room, live/clearRoomGifts</td>
+          <td>{rid:int}; refresh/reset room gift counters.</td>
+        </tr>
+        <tr>
+          <td>userAction</td>
+          <td>Room, live/userAction</td>
+          <td>{uid:int,rule:int,expires_at:string|null}. This is room membership, not dashboard permissions.</td>
+        </tr>
+        <tr>
+          <td>rocketProgress</td>
+          <td>Room, gift increases progress without a tier transition</td>
+          <td>{rocket:object|null,score:int,old_score:int,win:{top3:[],list:[]}}. Rocket includes
+            level,lvl,points,score,nextPoints,nextLevel:int and icon/global/anim/icon_anim/name:string.</td>
+        </tr>
+        <tr>
+          <td>rocket</td>
+          <td>All joined room sockets, gift crosses a tier</td>
+          <td>Same progress keys plus win:{top3:array,list:array}, optional level:object (reward tier), room:Room,
+            live:Room. Inspect room.id before applying a global event to the current room.</td>
+        </tr>
+        <tr>
+          <td>redBox</td>
+          <td>Room; all rooms when box type=2</td>
+          <td>{box:Box}. Box liveuid equals room ID in this payload.</td>
+        </tr>
+        <tr>
+          <td>redBoxUse</td>
+          <td>Room, successful claim</td>
+          <td>{uid:int,liveuid:int,rid:int,box_id:int,reward:int,coins:int,usersCount:int}. coins is remaining box
+            coins, not claimant wallet balance; usersCount is claimed-slot count.</td>
+        </tr>
+        <tr>
+          <td>updateUserData</td>
+          <td>Recipient user, cash/sendCoins</td>
+          <td>{coins:int}. Merge supplied fields; do not replace the entire user model.</td>
+        </tr>
+        <tr>
+          <td>privateMessage</td>
+          <td>Other participant; message, read, deletion, reaction changes</td>
+          <td>Discriminated object; see variants below.</td>
+        </tr>
+        <tr>
+          <td>stopRoom</td>
+          <td>Room, admin room closure service</td>
+          <td>Owner user payload directly. Leave voice session, stop rendering the closed room and refresh available
+            rooms.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+  <h3>privateMessage variants</h3>
+  <pre><code>{"type":"message","chat_id":8,"message":{"id":10,"chat_id":8,"uid":42,"content":"Hello"}}
+{"type":"deleteMessage","messageID":10,"chat_id":8,"last_message":{"id":9,"chat_id":8}}
+{"type":"reactions","msgID":10,"chat":{"id":8,"chat_id":8},"reactions":[]}
+{"type":"messageState","chat_id":8,"message_ids":[10],"state":2,"target_state":2}</code></pre>
+  <p>For the reactions socket variant, chat.id is overwritten with the conversation ID by the sender; use msgID for the
+    reacted message. A deleted conversation's preview can be a fallback message when no surviving message exists.</p>
+</section>
+<section id="flow">
+  <h2>Working sequence and verification</h2>
+  <pre><code>// Example for an integration using socket.io-client.
+const socket = io('https://socket.example.com', {
+  transports: ['websocket'], autoConnect: false
+});
+socket.on('connect', () =&gt; socket.emit('conn', {
+  token: session.token, apiKey: API_KEY, prefix: 'tomchat'
+}));
+socket.on('appCon', async (value) =&gt; {
+  if (value !== 1) return;
+  // POST /api/live/enterRoom with Auth-Token and {rid:7,password:...}.
+  // Require code=200 AND data.state="ok" before joining Agora.
+});
+socket.on('roomSeats', seats =&gt; renderSeats(seats));
+socket.on('roomMessage', message =&gt; appendMessage(message));
+socket.on('roomGift', gifts =&gt; renderGifts(gifts));
+socket.on('forceLogout', () =&gt; { socket.disconnect(); clearSession(); });
+socket.connect();</code></pre>
+  <ol>
+    <li>Sign in through PHP. Register listeners before calling socket.connect.</li>
+    <li>Wait for appCon=1, then enter the room through PHP. Node receives the Redis event and joins the socket to that
+      room.</li>
+    <li>POST live/seatTake, live/sendMessage or live/sendGift; check the PHP outcome, then observe roomSeats,
+      roomMessage or roomGift on a second client.</li>
+    <li>To leave, POST live/leaveRoom then emit leaveRoom with the same rid. Release Agora locally.</li>
+    <li>On reconnect, reauthenticate conn and refresh authoritative PHP state. Re-enter only after appCon. Do not replay
+      purchases/gifts.</li>
+  </ol>
+  <p>Source map: node_server/s1.js and src/handlers/user.js define routing and direct handlers; PHP LiveAppController,
+    RoomAppController, ChatAppController, LiveboxAppController, CashAppController and AuthAppController publish business
+    events; AdminRoomClosureService publishes stopRoom. Flutter's forceReconnect/reconnect are local event-emitter
+    signals, not server catalogue entries.</p>
+</section>
+
+<section>
+  <h2>Disconnect recovery</h2>
+  <p>The last socket disconnect schedules room cleanup after 60 seconds. Entering the same room through PHP startLive or
+    enterRoom cancels its Redis job; socket reauthentication or entering another room preserves it. See <a
+      href="room-disconnect.html">shared-secret configuration and callback protection</a>.</p>
+</section>
