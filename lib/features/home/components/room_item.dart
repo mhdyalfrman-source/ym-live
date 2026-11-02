@@ -8,7 +8,7 @@ import 'package:hugeicons/hugeicons.dart';
 import 'package:tom_chat/core/utils/swip_page.dart';
 import 'package:tom_chat/core/widgets/app_image.dart';
 import 'package:tom_chat/features/home/controllers/home_controller.dart';
-import 'package:tom_chat/features/home/controllers/storage_Service.dart';
+import 'package:tom_chat/features/home/controllers/storage_service.dart';
 import 'package:tom_chat/features/profile/components/user_name_widget.dart';
 import 'package:tom_chat/features/rooms/models/room_model.dart';
 import 'package:tom_chat/features/rooms/room_screen.dart';
