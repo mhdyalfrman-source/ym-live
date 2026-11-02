@@ -12,7 +12,7 @@ import 'package:tom_chat/l10n/l10n.dart';
 import 'package:tom_chat/statics_values.dart';
 
 class CallServerAPI {
-  static final String com = 'https://84.200.193.185/yaumi/public/';
+  static final String com = 'http://104.207.90.135/yaumi/public/';
   static final String apiKey = "no09-adbz-pat0-ndbe";
 
   static Future<Map<String, dynamic>> post(

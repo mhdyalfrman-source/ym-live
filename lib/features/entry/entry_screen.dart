@@ -301,7 +301,7 @@ class _BlurConsentBoxState extends State<BlurConsentBox> {
       ..onTap = () {
         if (widget.onPolicyTap != null) widget.onPolicyTap!();
         launchUrl(
-          Uri.parse("https://84.200.193.185/yaumi/privacy_policy.html"),
+          Uri.parse("http://104.207.90.135/yaumi/privacy_policy.html"),
           mode: LaunchMode.inAppWebView,
         );
       };

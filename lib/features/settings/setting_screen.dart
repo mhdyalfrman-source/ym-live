@@ -669,7 +669,7 @@ class _SettingScreenState extends State<SettingScreen> {
             title: context.l10n.policy,
             onTap: () {
               launchUrl(
-                Uri.parse("https://84.200.193.185/yaumi/privacy_policy.html"),
+                Uri.parse("http://104.207.90.135/yaumi/privacy_policy.html"),
                 mode: LaunchMode.inAppWebView,
               );
             },
