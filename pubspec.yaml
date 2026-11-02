@@ -30,7 +30,7 @@ dependencies:
   unique_identifier: 
   firebase_messaging: 
   timeago_flutter: 
-  flutter_local_notifications: 
+  flutter_local_notifications:  ^19.5.0
   flutter_staggered_grid_view:
   photo_view:
   flutter_secure_storage: 
