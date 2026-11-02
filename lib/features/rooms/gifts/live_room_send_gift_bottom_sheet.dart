@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:get/get.dart';
-import 'package:ionicons/ionicons.dart';
+import 'package:ionicons_plus/ionicons_plus.dart';
 import 'package:tom_chat/features/home/controllers/home_controller.dart';
 import 'package:tom_chat/features/rooms/controllers/room_controller.dart';
 import 'package:tom_chat/features/rooms/gifts/gift_grid_widget.dart';

@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:get/get.dart';
-import 'package:ionicons/ionicons.dart';
+import 'package:ionicons_plus/ionicons_plus.dart';
 import 'package:tom_chat/core/helpers/secure_storage.dart';
 import 'package:tom_chat/core/theme/color.dart';
 import 'package:tom_chat/core/widgets/buttons.dart';

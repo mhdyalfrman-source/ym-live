@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:flutter_staggered_grid_view/flutter_staggered_grid_view.dart';
 import 'package:get/get.dart';
-import 'package:ionicons/ionicons.dart';
+import 'package:ionicons_plus/ionicons_plus.dart';
 import 'package:tom_chat/core/theme/color.dart';
 import 'package:tom_chat/core/utils/snakbar_dialog.dart';
 import 'package:tom_chat/core/utils/swip_page.dart';

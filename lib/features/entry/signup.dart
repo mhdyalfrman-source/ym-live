@@ -5,7 +5,7 @@ import 'package:tom_chat/core/widgets/card_widget.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:get/get.dart' hide Trans;
-import 'package:ionicons/ionicons.dart';
+import 'package:ionicons_plus/ionicons_plus.dart';
 import 'package:tom_chat/core/utils/open_camera_gallery.dart';
 import 'package:tom_chat/core/widgets/buttons.dart';
 import 'package:tom_chat/core/widgets/dropdown_button.dart';

@@ -11,7 +11,7 @@ dependencies:
     sdk: flutter
   cupertino_icons: ^1.0.8
   get: 4.7.3
-  ionicons:
+  ionicons_plus: ^0.2.5
   flutter_screenutil: 
   get_storage:
   slide_to_act: 
