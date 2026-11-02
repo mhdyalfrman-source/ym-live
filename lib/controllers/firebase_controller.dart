@@ -102,10 +102,10 @@ class MessagingConfig {
         var body = notification.body;
 
         await flutterLocalNotificationsPlugin.show(
-            id: notification.hashCode,
-            title: notification.title,
-            body: body,
-            notificationDetails: NotificationDetails(
+            notification.hashCode,
+            notification.title,
+            body,
+            NotificationDetails(
             android: AndroidNotificationDetails(
               'high_importance_channel',
               'High Importance Notifications',
