@@ -1,21 +1,16 @@
 name: Build ITS Connected APKs
-
 on:
   workflow_dispatch:
   push:
     branches: [main]
-
 permissions:
   contents: read
-
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-      - name: Set up Flutter
-        uses: subosito/flutter-action@v2
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
         with:
           channel: stable
           cache: true
@@ -24,16 +19,12 @@ jobs:
           flutter create --org com.mahdi.nabdqalbi --project-name sender sender
           flutter create --org com.mahdi.nabdqalbi --project-name receiver receiver
           cp pubspec.yaml sender/pubspec.yaml
-      cp google-services.json sender/android/app/google-services.json
           cp pubspec.yaml receiver/pubspec.yaml
-      cp google-services.json receiver/android/app/google-services.json
+          cp google-services.json sender/android/app/google-services.json
+          cp google-services.json receiver/android/app/google-services.json
           mkdir -p sender/lib receiver/lib
           cp lib/main.dart sender/lib/main.dart
           cp lib/main.dart receiver/lib/main.dart
-          sed -i '/<application/i\    <uses-permission android:name="android.permission.INTERNET" />' sender/android/app/src/main/AndroidManifest.xml
-          sed -i '/<application/i\    <uses-permission android:name="android.permission.INTERNET" />' receiver/android/app/src/main/AndroidManifest.xml
-          sed -i 's/android:label="its_sender"/android:label="ITS MINE"/' sender/android/app/src/main/AndroidManifest.xml
-          sed -i 's/android:label="its_receiver"/android:label="ITS MY"/' receiver/android/app/src/main/AndroidManifest.xml
       - name: Build sender APK
         working-directory: sender
         run: |
@@ -49,8 +40,7 @@ jobs:
           mkdir -p dist
           cp sender/build/app/outputs/flutter-apk/app-release.apk dist/ITS-MINE.apk
           cp receiver/build/app/outputs/flutter-apk/app-release.apk dist/ITS-MY.apk
-      - name: Upload APKs
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
           name: ITS-Connected-APKs
           path: dist/*.apk
