@@ -1,7 +1,7 @@
 name: its_apps
 description: ITS sender and receiver apps
 publish_to: "none"
-version: 1.2.0+3
+version: 1.2.0+4
 
 environment:
   sdk: '>=3.10.0 <4.0.0'
@@ -19,6 +19,7 @@ dependencies:
   audio_service: ^0.18.19
   video_player: ^2.11.1
   url_launcher: ^6.3.2
+  record: ^6.2.1
 
 flutter:
   uses-material-design: true

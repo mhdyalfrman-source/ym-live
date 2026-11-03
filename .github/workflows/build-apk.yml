@@ -69,6 +69,9 @@ jobs:
                   raise SystemExit(f"No Gradle settings file found for {app}")
 
               gradle_text = app_gradle.read_text()
+              gradle_text = re.sub(r"minSdk\s*=\s*flutter\.minSdkVersion", "minSdk = 23", gradle_text)
+              gradle_text = re.sub(r"minSdkVersion\s+flutter\.minSdkVersion", "minSdkVersion 23", gradle_text)
+              app_gradle.write_text(gradle_text)
               if "com.google.gms.google-services" not in gradle_text:
                   match = re.search(r"(?m)^\s*id\([\"']com\.android\.application[\"']\).*?$|^\s*id\s+[\"']com\.android\.application[\"'].*$", gradle_text)
                   if not match:
@@ -88,6 +91,8 @@ jobs:
               text = manifest.read_text()
               if 'xmlns:tools=' not in text:
                   text = text.replace('<manifest ', '<manifest xmlns:tools="http://schemas.android.com/tools" ', 1)
+              if 'android.permission.RECORD_AUDIO' not in text:
+                  text = text.replace('<application', '<uses-permission android:name="android.permission.RECORD_AUDIO" />\n    <application', 1)
               if 'android.permission.INTERNET' not in text:
                   text = text.replace('<application', '<uses-permission android:name="android.permission.INTERNET" />\n    <application', 1)
               for permission in ("android.permission.POST_NOTIFICATIONS", "android.permission.WAKE_LOCK", "android.permission.FOREGROUND_SERVICE", "android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK"):

@@ -166,7 +166,7 @@ const MEDIA_TYPES = {
   'audio/mpeg': { ext: 'mp3', kind: 'audio' }, 'audio/mp4': { ext: 'm4a', kind: 'audio' },
   'audio/aac': { ext: 'aac', kind: 'audio' }, 'audio/wav': { ext: 'wav', kind: 'audio' }, 'audio/ogg': { ext: 'ogg', kind: 'audio' }
 };
-app.post('/api/media', auth, express.raw({ type: Object.keys(MEDIA_TYPES), limit: '64mb' }), async (req, res, next) => {
+app.post('/api/media', auth, express.raw({ type: Object.keys(MEDIA_TYPES), limit: '256mb' }), async (req, res, next) => {
   if (req.its.role !== 'sender') return res.status(403).json({ success: false, error: 'sender_only' });
   const mime = String(req.headers['content-type'] || '').split(';')[0].toLowerCase();
   const media = MEDIA_TYPES[mime];

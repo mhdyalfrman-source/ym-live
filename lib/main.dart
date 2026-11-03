@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
@@ -12,13 +13,14 @@ import 'package:video_player/video_player.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:record/record.dart';
 
 const bool isSender = bool.fromEnvironment('ITS_SENDER', defaultValue: false);
 const String apiBase = 'https://104-207-90-135.sslip.io/api';
 const String appVersion = '1.2.0';
-const Color red = Color(0xFFB51F32);
-const Color silver = Color(0xFFD7D9DE);
-const Color panel = Color(0xFF15171C);
+const Color red = Color(0xFFD5B77A); // restrained champagne-gold accent
+const Color silver = Color(0xFFE1E3E8);
+const Color panel = Color(0xFF121316);
 AudioPlayer? _itsSharedAudioPlayer;
 AudioPlayer get itsSharedAudioPlayer => _itsSharedAudioPlayer ??= AudioPlayer();
 String? itsLoadedAudioUrl;
@@ -64,7 +66,7 @@ class ItsApp extends StatelessWidget {
         title: isSender ? '♛ 𝐈𝐓𝐒 : MINE ♛' : '#¹♥ 𝐈𝐓𝐒 : MY ♕︎.',
         theme: ThemeData(
           brightness: Brightness.dark,
-          scaffoldBackgroundColor: const Color(0xFF090A0D),
+          scaffoldBackgroundColor: const Color(0xFF050506),
           colorScheme: const ColorScheme.dark(primary: red, secondary: silver, surface: panel),
           useMaterial3: true,
         ),
@@ -101,6 +103,8 @@ class _ItsHomeState extends State<ItsHome> {
   String? _error;
   bool _busy = true;
   bool _sending = false;
+  bool _isRecordingVoice = false;
+  final AudioRecorder _voiceRecorder = AudioRecorder();
   bool _paired = false;
   List<ItsMessage> _messages = [];
   Timer? _poller;
@@ -354,22 +358,80 @@ class _ItsHomeState extends State<ItsHome> {
     }
   }
 
-  Future<void> _pickAndSendMedia() async {
-    if (_sending || !_paired) return;
+  Future<void> _showAttachmentOptions() async {
+    if (_sending || !_paired || !isSender) return;
+    await showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: const Color(0xFF111214),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (sheetContext) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 18, 16, 24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(width: 42, height: 4, decoration: BoxDecoration(color: Colors.white30, borderRadius: BorderRadius.circular(8))),
+              const SizedBox(height: 18),
+              const Text('إرسال مرفق', style: TextStyle(color: silver, fontSize: 18, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 16),
+              Row(children: [
+                Expanded(child: _attachmentChoice(sheetContext, Icons.image_outlined, 'صورة', const ['jpg', 'jpeg', 'png', 'webp'])),
+                const SizedBox(width: 10),
+                Expanded(child: _attachmentChoice(sheetContext, Icons.videocam_outlined, 'فيديو', const ['mp4', 'mov'])),
+                const SizedBox(width: 10),
+                Expanded(child: _attachmentChoice(sheetContext, Icons.music_note, 'أغنية', const ['mp3', 'm4a', 'aac', 'wav', 'ogg'])),
+              ]),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _attachmentChoice(BuildContext sheetContext, IconData icon, String label, List<String> extensions) {
+    return InkWell(
+      borderRadius: BorderRadius.circular(16),
+      onTap: () {
+        Navigator.pop(sheetContext);
+        _pickAndSendMedia(extensions: extensions);
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 6),
+        decoration: BoxDecoration(
+          color: panel,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: red.withOpacity(.65)),
+        ),
+        child: Column(children: [Icon(icon, color: silver, size: 28), const SizedBox(height: 8), Text(label, style: const TextStyle(color: silver, fontWeight: FontWeight.w600))]),
+      ),
+    );
+  }
+
+  Future<void> _pickAndSendMedia({required List<String> extensions}) async {
+    if (_sending || !_paired || !isSender) return;
     try {
-      final files = await FilePicker.pickFiles(
-        type: FileType.custom,
-        allowedExtensions: ['jpg', 'jpeg', 'png', 'webp', 'mp4', 'mov', 'mp3', 'm4a', 'aac', 'wav', 'ogg'],
-      );
+      final files = await FilePicker.pickFiles(type: FileType.custom, allowedExtensions: extensions);
       if (files.isEmpty) return;
       final file = files.single;
       final bytes = await file.readAsBytes();
       final ext = (file.extension ?? '').toLowerCase();
       final mime = _mimeFor(ext);
-      if (bytes == null || mime == null) throw Exception('صيغة الملف غير مدعومة.');
-      if (bytes.length > 64 * 1024 * 1024) throw Exception('حجم الملف أكبر من 64 ميغابايت.');
-      setState(() { _sending = true; _error = null; });
-      final encodedName = base64Url.encode(utf8.encode(file.name));
+      if (bytes.isEmpty || mime == null) throw Exception('صيغة الملف غير مدعومة.');
+      await _uploadAndSendMedia(bytes, file.name, ext, mime);
+    } catch (e) {
+      if (mounted) setState(() => _error = e.toString().replaceFirst('Exception: ', ''));
+    }
+  }
+
+  Future<void> _uploadAndSendMedia(List<int> bytes, String name, String ext, String mime) async {
+    if (_sending || !_paired || _token == null || !isSender) return;
+    if (bytes.isEmpty) throw Exception('الملف فارغ.');
+    if (bytes.length > 256 * 1024 * 1024) throw Exception('حجم الملف أكبر من 256 ميغابايت.');
+    setState(() { _sending = true; _error = null; });
+    try {
+      final encodedName = base64Url.encode(utf8.encode(name));
       final upload = await http.post(
         Uri.parse('$apiBase/media'),
         headers: {
@@ -378,19 +440,56 @@ class _ItsHomeState extends State<ItsHome> {
           'X-File-Name': encodedName,
         },
         body: bytes,
-      ).timeout(const Duration(minutes: 3));
+      ).timeout(const Duration(minutes: 5));
       final uploadData = jsonDecode(upload.body) as Map<String, dynamic>;
       if (upload.statusCode != 201 || uploadData['success'] != true) {
         throw Exception('فشل رفع الملف (${upload.statusCode}).');
       }
       final mediaUrl = uploadData['url'] as String;
       final kind = uploadData['kind'] as String;
-      await _sendMessageBody('ITS_MEDIA:${jsonEncode({'kind': kind, 'url': mediaUrl, 'name': file.name})}', lockAlreadyHeld: true);
-    } catch (e) {
-      if (mounted) setState(() => _error = e.toString().replaceFirst('Exception: ', ''));
+      await _sendMessageBody('ITS_MEDIA:${jsonEncode({'kind': kind, 'url': mediaUrl, 'name': name})}', lockAlreadyHeld: true);
     } finally {
       if (mounted) setState(() => _sending = false);
     }
+  }
+
+  Future<void> _toggleVoiceRecording() async {
+    if (_sending || !_paired || !isSender) return;
+    if (_isRecordingVoice) {
+      try {
+        final path = await _voiceRecorder.stop();
+        if (mounted) setState(() => _isRecordingVoice = false);
+        if (path == null) return;
+        final recorded = File(path);
+        final bytes = await recorded.readAsBytes();
+        await _uploadAndSendMedia(bytes, 'بصمة صوت.m4a', 'm4a', 'audio/mp4');
+        try { await recorded.delete(); } catch (_) {}
+      } catch (e) {
+        if (mounted) setState(() { _isRecordingVoice = false; _error = e.toString().replaceFirst('Exception: ', ''); });
+      }
+      return;
+    }
+    try {
+      final permitted = await _voiceRecorder.hasPermission();
+      if (!permitted) throw Exception('اسمح للتطبيق باستخدام المايك حتى تسجل بصمة صوت.');
+      final path = '${Directory.systemTemp.path}/its-voice-${DateTime.now().millisecondsSinceEpoch}.m4a';
+      await _voiceRecorder.start(const RecordConfig(encoder: AudioEncoder.aacLc), path: path);
+      if (mounted) setState(() { _isRecordingVoice = true; _error = null; });
+    } catch (e) {
+      if (mounted) setState(() => _error = e.toString().replaceFirst('Exception: ', ''));
+    }
+  }
+
+  void _showCallNotice() {
+    showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        backgroundColor: panel,
+        title: const Text('المكالمة الصوتية', style: TextStyle(color: silver)),
+        content: const Text('زر المكالمة مضاف للواجهة، لكن الاتصال الصوتي المباشر يحتاج خدمة مكالمات وإشارات WebRTC على السيرفر. هذه الخدمة غير موجودة حالياً، لذلك لن أظهرها على أنها تعمل قبل تجهيزها.', style: TextStyle(color: Colors.white70, height: 1.5)),
+        actions: [TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('حسناً'))],
+      ),
+    );
   }
 
   Future<void> _logoutLocal() async {
@@ -437,6 +536,8 @@ class _ItsHomeState extends State<ItsHome> {
     _password.dispose();
     _composer.dispose();
     _scroll.dispose();
+    if (_isRecordingVoice) { unawaited(_voiceRecorder.cancel()); }
+    unawaited(_voiceRecorder.dispose());
     super.dispose();
   }
 
@@ -448,7 +549,10 @@ class _ItsHomeState extends State<ItsHome> {
         backgroundColor: const Color(0xFF090A0D),
         centerTitle: true,
         title: Text(title, style: const TextStyle(color: silver, fontWeight: FontWeight.w700, letterSpacing: .4, fontSize: 16)),
-        actions: [if (_token != null) IconButton(onPressed: _logoutLocal, tooltip: 'خروج', icon: const Icon(Icons.logout, color: silver))],
+        actions: [
+          if (_token != null && isSender) IconButton(onPressed: _paired ? _showCallNotice : null, tooltip: 'مكالمة', icon: const Icon(Icons.call_outlined, color: silver)),
+          if (_token != null) IconButton(onPressed: _logoutLocal, tooltip: 'خروج', icon: const Icon(Icons.logout, color: silver)),
+        ],
       ),
       body: SafeArea(child: _busy
           ? const Center(child: CircularProgressIndicator(color: red))
@@ -483,7 +587,7 @@ class _ItsHomeState extends State<ItsHome> {
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text(isSender ? 'مساحة الإرسال' : _openingMessage, style: const TextStyle(color: silver, fontSize: 21, fontWeight: FontWeight.bold)),
             const SizedBox(height: 7),
-            Text(isSender ? 'أرسل رسالة أو صورة أو فيديو أو أغنية.' : 'مساحة الاستقبال الخاصة', style: const TextStyle(color: Colors.white70, fontSize: 16)),
+            Text(isSender ? 'أرسل رسالة أو صورة أو فيديو أو بصمة صوت أو أغنية.' : 'مساحة الاستقبال الخاصة', style: const TextStyle(color: Colors.white70, fontSize: 16)),
             const SizedBox(height: 12),
             Row(children: [Icon(Icons.circle, color: _paired ? Colors.greenAccent : red, size: 9), const SizedBox(width: 8), Text(_paired ? 'متصل بالخادم' : 'بانتظار اتصال الطرف الآخر', style: const TextStyle(color: Colors.white70, fontSize: 12))]),
           ]),
@@ -497,16 +601,20 @@ class _ItsHomeState extends State<ItsHome> {
                     final mine = m.senderUid == _installationId;
                     return Align(alignment: mine ? Alignment.centerRight : Alignment.centerLeft, child: Container(
                       constraints: const BoxConstraints(maxWidth: 310), margin: const EdgeInsets.only(bottom: 9), padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 11),
-                      decoration: BoxDecoration(color: mine ? const Color(0xFF3B1821) : panel, borderRadius: BorderRadius.circular(16), border: Border.all(color: mine ? red.withOpacity(.6) : const Color(0xFF343840))),
+                      decoration: BoxDecoration(color: mine ? const Color(0xFF211D15) : panel, borderRadius: BorderRadius.circular(16), border: Border.all(color: mine ? red.withOpacity(.6) : const Color(0xFF343840))),
                       child: _messageContent(m),
                     ));
                   })),
-        if (isSender) Padding(padding: const EdgeInsets.fromLTRB(10, 8, 10, 10), child: Row(children: [
-          IconButton(onPressed: _sending || !_paired ? null : _pickAndSendMedia, tooltip: 'إرفاق صورة أو فيديو أو أغنية', icon: const Icon(Icons.attach_file, color: silver)),
-          Expanded(child: TextField(controller: _composer, minLines: 1, maxLines: 4, textInputAction: TextInputAction.newline, decoration: InputDecoration(hintText: 'اكتب رسالة...', filled: true, fillColor: panel, border: OutlineInputBorder(borderRadius: BorderRadius.circular(18))))),
-          const SizedBox(width: 6),
-          IconButton.filled(onPressed: _sending || !_paired ? null : _sendMessage, style: IconButton.styleFrom(backgroundColor: red), icon: _sending ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.send)),
-        ])),
+        if (isSender) ...[
+          if (_isRecordingVoice) Padding(padding: const EdgeInsets.only(bottom: 4), child: Text('جارٍ تسجيل بصمة الصوت — اضغط المايك للإرسال', style: TextStyle(color: red, fontSize: 12))),
+          Padding(padding: const EdgeInsets.fromLTRB(10, 8, 10, 10), child: Row(children: [
+            IconButton(onPressed: _sending || !_paired ? null : _showAttachmentOptions, tooltip: 'إرفاق صورة أو فيديو أو أغنية', icon: const Icon(Icons.add_circle_outline, color: silver, size: 27)),
+            Expanded(child: TextField(controller: _composer, minLines: 1, maxLines: 4, textInputAction: TextInputAction.newline, decoration: InputDecoration(hintText: 'اكتب رسالة...', filled: true, fillColor: panel, border: OutlineInputBorder(borderRadius: BorderRadius.circular(18))))),
+            const SizedBox(width: 3),
+            IconButton(onPressed: _sending || !_paired ? null : _toggleVoiceRecording, tooltip: _isRecordingVoice ? 'إيقاف وإرسال البصمة' : 'تسجيل بصمة صوت', icon: Icon(_isRecordingVoice ? Icons.stop_circle_outlined : Icons.mic_none, color: _isRecordingVoice ? Colors.redAccent : silver, size: 27)),
+            IconButton.filled(onPressed: _sending || !_paired ? null : _sendMessage, style: IconButton.styleFrom(backgroundColor: red), icon: _sending ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.send)),
+          ])),
+        ],
         if (_error != null) Padding(padding: const EdgeInsets.only(bottom: 8), child: Text(_error!, style: const TextStyle(color: Color(0xFFFF8794), fontSize: 12))),
         Padding(padding: const EdgeInsets.only(bottom: 12, top: 4), child: Text('ITS  •  PRIVATE SPACE', style: TextStyle(color: Colors.white.withOpacity(.35), letterSpacing: 2, fontSize: 10))),
       ]);
