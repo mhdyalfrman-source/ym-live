@@ -357,15 +357,13 @@ class _ItsHomeState extends State<ItsHome> {
   Future<void> _pickAndSendMedia() async {
     if (_sending || !_paired) return;
     try {
-      final result = await FilePicker.platform.pickFiles(
+      final files = await FilePicker.pickFiles(
         type: FileType.custom,
         allowedExtensions: ['jpg', 'jpeg', 'png', 'webp', 'mp4', 'mov', 'mp3', 'm4a', 'aac', 'wav', 'ogg'],
-        withData: true,
-        allowMultiple: false,
       );
-      if (result == null || result.files.isEmpty) return;
-      final file = result.files.single;
-      final bytes = file.bytes;
+      if (files.isEmpty) return;
+      final file = files.single;
+      final bytes = await file.readAsBytes();
       final ext = (file.extension ?? '').toLowerCase();
       final mime = _mimeFor(ext);
       if (bytes == null || mime == null) throw Exception('صيغة الملف غير مدعومة.');
