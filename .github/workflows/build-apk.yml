@@ -78,6 +78,32 @@ jobs:
                   app_gradle.write_text(gradle_text)
           print("Firebase Gradle plugin configured for both apps")
           PYCODE
+      - name: Configure Android labels, notifications and background audio
+        run: |
+          python3 - <<'PYCODE'
+          from pathlib import Path
+          import re
+          for app, label in (("sender", "♛ 𝐈𝐓𝐒 : MINE ♛"), ("receiver", "#¹♥ 𝐈𝐓𝐒 : MY ♕︎.")):
+              manifest = Path(app) / "android/app/src/main/AndroidManifest.xml"
+              text = manifest.read_text()
+              if 'xmlns:tools=' not in text:
+                  text = text.replace('<manifest ', '<manifest xmlns:tools="http://schemas.android.com/tools" ', 1)
+              if 'android.permission.INTERNET' not in text:
+                  text = text.replace('<application', '<uses-permission android:name="android.permission.INTERNET" />\n    <application', 1)
+              for permission in ("android.permission.POST_NOTIFICATIONS", "android.permission.WAKE_LOCK", "android.permission.FOREGROUND_SERVICE", "android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK"):
+                  if permission not in text:
+                      text = text.replace('<application', f'<uses-permission android:name="{permission}" />\n    <application', 1)
+              text = re.sub(r'android:label="[^"]*"', 'android:label="' + label + '"', text, count=1)
+              text = text.replace('android:name=".MainActivity"', 'android:name="com.ryanheise.audioservice.AudioServiceActivity"', 1)
+              if 'com.ryanheise.audioservice.AudioService"' not in text:
+                  service = '<service android:name="com.ryanheise.audioservice.AudioService" android:foregroundServiceType="mediaPlayback" android:exported="true" tools:ignore="Instantiatable"><intent-filter><action android:name="android.media.browse.MediaBrowserService" /></intent-filter></service>'
+                  text = text.replace('</application>', service + '\n    </application>', 1)
+              if 'com.ryanheise.audioservice.MediaButtonReceiver' not in text:
+                  receiver = '<receiver android:name="com.ryanheise.audioservice.MediaButtonReceiver" android:exported="true" tools:ignore="Instantiatable"><intent-filter><action android:name="android.intent.action.MEDIA_BUTTON" /></intent-filter></receiver>'
+                  text = text.replace('</application>', receiver + '\n    </application>', 1)
+              manifest.write_text(text)
+          print("Android names, FCM notification permission and background audio configured")
+          PYCODE
       - name: Build sender APK
         working-directory: sender
         run: |

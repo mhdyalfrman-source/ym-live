@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ITS | لوحة الإدارة</title>
+<style>
+:root{color-scheme:dark;font-family:system-ui,Arial,sans-serif}*{box-sizing:border-box}body{margin:0;background:#090a0d;color:#e5e7eb;padding:24px}.wrap{max-width:620px;margin:auto}.card{background:#15171c;border:1px solid #343840;border-radius:18px;padding:20px;margin:14px 0}h1{font-size:23px;color:#d7d9de}label{display:block;margin:15px 0 6px;color:#c4c7ce}input{width:100%;padding:13px;border:1px solid #555962;border-radius:10px;background:#0c0e12;color:white;font-size:15px}button{border:0;border-radius:12px;padding:14px 20px;background:#b51f32;color:white;font-size:16px;width:100%;margin-top:18px}small{color:#9ca3af}.status{margin-top:14px;line-height:1.7;color:#fda4af}
+</style>
+</head>
+<body><main class="wrap">
+<h1>ITS · لوحة الإدارة</h1>
+<p><small>تعديل أسماء التطبيقات ورسائلها يظهر مباشرة دون إعادة بناء APK.</small></p>
+<section class="card">
+<label for="key">مفتاح الإدارة</label><input id="key" type="password" autocomplete="off" placeholder="مفتاح الإدارة المحدد على الخادم">
+<label for="sender">اسم تطبيق الإرسال</label><input id="sender" maxlength="100">
+<label for="receiver">اسم تطبيق الاستقبال</label><input id="receiver" maxlength="100">
+<label for="opening">العبارة عند فتح الاستقبال</label><input id="opening" maxlength="150">
+<label for="greeting">رسالة الثامنة صباحاً (توقيت بغداد)</label><input id="greeting" maxlength="200">
+<label for="music">اسم مشغل الموسيقى</label><input id="music" maxlength="100">
+<label for="version">أحدث إصدار للتطبيق</label><input id="version" maxlength="30">
+<label for="url">رابط صفحة تحديث APK (HTTPS)</label><input id="url" maxlength="300" placeholder="https://...">
+<button id="save">حفظ الإعدادات</button><div id="status" class="status" role="status"></div>
+</section>
+</main>
+<script>
+const $=id=>document.getElementById(id);const status=$('status');
+async function load(){try{const r=await fetch('/api/app-config');const j=await r.json();if(!j.success)throw Error('تعذّر تحميل الإعدادات');const c=j.config||{};$('sender').value=c.senderName||'';$('receiver').value=c.receiverName||'';$('opening').value=c.openingMessage||'';$('greeting').value=c.morningGreeting||'';$('music').value=c.musicLabel||'';$('version').value=c.latestVersion||'';$('url').value=c.downloadUrl||'';}catch(e){status.textContent=e.message;}}
+$('save').addEventListener('click',async()=>{status.textContent='جارٍ الحفظ...';try{const r=await fetch('/api/admin/config',{method:'POST',headers:{'Content-Type':'application/json','x-admin-key':$('key').value},body:JSON.stringify({senderName:$('sender').value,receiverName:$('receiver').value,openingMessage:$('opening').value,morningGreeting:$('greeting').value,musicLabel:$('music').value,latestVersion:$('version').value,downloadUrl:$('url').value})});const j=await r.json();if(!r.ok||!j.success)throw Error(j.error==='admin_forbidden'?'مفتاح الإدارة غير صحيح أو غير مفعّل على الخادم.':(j.error||'فشل الحفظ'));status.textContent='تم حفظ الإعدادات. ستظهر بالتطبيق خلال دقائق.';}catch(e){status.textContent=e.message;}});
+load();
+</script></body></html>
