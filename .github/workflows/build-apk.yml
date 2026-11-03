@@ -1,0 +1,54 @@
+name: Build ITS APKs
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Generate Android projects
+        run: |
+          flutter create --org com.itsmine --project-name its_sender sender
+          flutter create --org com.itsmine --project-name its_receiver receiver
+          mkdir -p sender/lib receiver/lib
+          cp lib/main.dart sender/lib/main.dart
+          cp lib/main.dart receiver/lib/main.dart
+          sed -i 's/android:label="its_sender"/android:label="ITS MINE"/' sender/android/app/src/main/AndroidManifest.xml
+          sed -i 's/android:label="its_receiver"/android:label="ITS MY"/' receiver/android/app/src/main/AndroidManifest.xml
+
+      - name: Build sender APK
+        working-directory: sender
+        run: |
+          flutter pub get
+          flutter build apk --release --dart-define=ITS_SENDER=true
+
+      - name: Build receiver APK
+        working-directory: receiver
+        run: |
+          flutter pub get
+          flutter build apk --release --dart-define=ITS_SENDER=false
+
+      - name: Upload APKs
+        uses: actions/upload-artifact@v4
+        with:
+          name: ITS-Android-APKs
+          path: |
+            sender/build/app/outputs/flutter-apk/app-release.apk
+            receiver/build/app/outputs/flutter-apk/app-release.apk
+          if-no-files-found: error
+          retention-days: 14
