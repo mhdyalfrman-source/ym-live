@@ -21,10 +21,12 @@ jobs:
           cache: true
       - name: Generate Android projects
         run: |
-          flutter create --org com.itsmine --project-name its_sender sender
-          flutter create --org com.itsmine --project-name its_receiver receiver
+          flutter create --org com.mahdi.nabdqalbi --project-name sender sender
+          flutter create --org com.mahdi.nabdqalbi --project-name receiver receiver
           cp pubspec.yaml sender/pubspec.yaml
+      cp google-services.json sender/android/app/google-services.json
           cp pubspec.yaml receiver/pubspec.yaml
+      cp google-services.json receiver/android/app/google-services.json
           mkdir -p sender/lib receiver/lib
           cp lib/main.dart sender/lib/main.dart
           cp lib/main.dart receiver/lib/main.dart

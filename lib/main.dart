@@ -2,6 +2,8 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
 import 'package:flutter/material.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -11,7 +13,17 @@ const Color red = Color(0xFFB51F32);
 const Color silver = Color(0xFFD7D9DE);
 const Color panel = Color(0xFF15171C);
 
-void main() => runApp(const ItsApp());
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await Firebase.initializeApp();
+  FirebaseMessaging.onBackgroundMessage(_firebaseBackgroundHandler);
+  runApp(const ItsApp());
+}
+
+@pragma('vm:entry-point')
+Future<void> _firebaseBackgroundHandler(RemoteMessage message) async {
+  await Firebase.initializeApp();
+}
 
 class ItsApp extends StatelessWidget {
   const ItsApp({super.key});
@@ -137,6 +149,20 @@ class _ItsHomeState extends State<ItsHome> {
       _installationId = id;
       _token = data['token'] as String;
       await prefs.setString('its_session_token', _token!);
+        try {
+          await FirebaseMessaging.instance.requestPermission();
+          final fcmToken = await FirebaseMessaging.instance.getToken();
+          if (fcmToken != null) {
+            final r = await http.post(
+              Uri.parse('$apiBase/device-token'),
+              headers: _headers,
+              body: jsonEncode({'token': fcmToken}),
+            );
+            debugPrint('FCM registration: ${r.statusCode}');
+          }
+        } catch (e) {
+          debugPrint('FCM error: $e');
+        }
       _password.clear();
       await _refresh();
       _startPolling();

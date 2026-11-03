@@ -1,0 +1,48 @@
+{
+  "project_info": {
+    "project_number": "240144015349",
+    "project_id": "nabdqalbi-76caa",
+    "storage_bucket": "nabdqalbi-76caa.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:240144015349:android:82dabc4bd96c7e6625cabc",
+        "android_client_info": {
+          "package_name": "com.mahdi.nabdqalbi.receiver"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAY5DATKSIRkZuISuJ0mBsZiweZEIunlso"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:240144015349:android:d03395e893f19c9e25cabc",
+        "android_client_info": {
+          "package_name": "com.mahdi.nabdqalbi.sender"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAY5DATKSIRkZuISuJ0mBsZiweZEIunlso"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
