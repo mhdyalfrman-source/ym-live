@@ -25,6 +25,59 @@ jobs:
           mkdir -p sender/lib receiver/lib
           cp lib/main.dart sender/lib/main.dart
           cp lib/main.dart receiver/lib/main.dart
+      - name: Configure Firebase Android Gradle plugin
+        run: |
+          python3 - <<'PYCODE'
+          from pathlib import Path
+          import re
+
+          for app in ("sender", "receiver"):
+              android = Path(app) / "android"
+              settings_kts = android / "settings.gradle.kts"
+              settings_groovy = android / "settings.gradle"
+              app_kts = android / "app" / "build.gradle.kts"
+              app_groovy = android / "app" / "build.gradle"
+
+              if settings_kts.exists():
+                  settings = settings_kts
+                  text = settings.read_text()
+                  if "com.google.gms.google-services" not in text:
+                      match = re.search(r"(?m)^(\s*)id\([\"']org\.jetbrains\.kotlin\.android[\"']\).*?$", text)
+                      declaration = '    id("com.google.gms.google-services") version "4.4.2" apply false\n'
+                      if match:
+                          pos = match.end()
+                          text = text[:pos] + "\n" + declaration.rstrip("\n") + text[pos:]
+                      else:
+                          raise SystemExit(f"Could not locate Kotlin plugin in {settings}")
+                      settings.write_text(text)
+                  app_gradle = app_kts
+                  app_line = '    id("com.google.gms.google-services")\n'
+              elif settings_groovy.exists():
+                  settings = settings_groovy
+                  text = settings.read_text()
+                  if "com.google.gms.google-services" not in text:
+                      match = re.search(r"(?m)^(\s*)id\s+[\"']org\.jetbrains\.kotlin\.android[\"'].*$", text)
+                      declaration = '    id "com.google.gms.google-services" version "4.4.2" apply false'
+                      if match:
+                          text = text[:match.end()] + "\n" + declaration + text[match.end():]
+                      else:
+                          raise SystemExit(f"Could not locate Kotlin plugin in {settings}")
+                      settings.write_text(text)
+                  app_gradle = app_groovy
+                  app_line = '    id "com.google.gms.google-services"\n'
+              else:
+                  raise SystemExit(f"No Gradle settings file found for {app}")
+
+              gradle_text = app_gradle.read_text()
+              if "com.google.gms.google-services" not in gradle_text:
+                  match = re.search(r"(?m)^\s*id\([\"']com\.android\.application[\"']\).*?$|^\s*id\s+[\"']com\.android\.application[\"'].*$", gradle_text)
+                  if not match:
+                      raise SystemExit(f"No Android application plugin found in {app_gradle}")
+                  pos = match.end()
+                  gradle_text = gradle_text[:pos] + "\n" + app_line.rstrip("\n") + gradle_text[pos:]
+                  app_gradle.write_text(gradle_text)
+          print("Firebase Gradle plugin configured for both apps")
+          PYCODE
       - name: Build sender APK
         working-directory: sender
         run: |

@@ -15,14 +15,24 @@ const Color panel = Color(0xFF15171C);
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await Firebase.initializeApp();
-  FirebaseMessaging.onBackgroundMessage(_firebaseBackgroundHandler);
+  // Never block the UI from starting if Firebase configuration is unavailable.
+  try {
+    await Firebase.initializeApp();
+    FirebaseMessaging.onBackgroundMessage(_firebaseBackgroundHandler);
+  } catch (e, stack) {
+    debugPrint('Firebase initialization failed; app will start without push notifications: $e');
+    debugPrintStack(stackTrace: stack);
+  }
   runApp(const ItsApp());
 }
 
 @pragma('vm:entry-point')
 Future<void> _firebaseBackgroundHandler(RemoteMessage message) async {
-  await Firebase.initializeApp();
+  try {
+    await Firebase.initializeApp();
+  } catch (e) {
+    debugPrint('Firebase background initialization failed: $e');
+  }
 }
 
 class ItsApp extends StatelessWidget {
